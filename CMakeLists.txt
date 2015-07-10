@@ -18,27 +18,26 @@ cmake_minimum_required (VERSION 2.8)
 set (LEDD ledd)
 project (${LEDD})
 
+# Rules to locate needed libraries
 include(FindPkgConfig)
-pkg_check_modules(SYSTEMD systemd)
 pkg_check_modules(CONFIG_YAML config-yaml)
-pkg_check_modules(HALONUTILS halonutils)
 pkg_check_modules(OVSCOMMON libovscommon)
 pkg_check_modules(OVSDB libovsdb)
-
-# Sources to build ledd
-set (SOURCES ledd.c)
 
 include_directories (${PROJECT_BINARY_DIR} ${PROJECT_SOURCE_DIR}
                      ${OVSCOMMON_INCLUDE_DIRS}
 )
 
+# Sources to build ledd
+set (SOURCES ledd.c)
+
 # Rules to build ledd
 add_executable (${LEDD} ${SOURCES})
 
-target_link_libraries (${LEDD} ${OVSCOMMON_LIBRARIES} ${OVSDB_LIBRARIES} ${SYSTEMD_LIBRARIES}
-                       ${CONFIG_YAML_LIBRARIES} ${SYSTEMD_LIBRARIES} ${HALONUTILS_LIBRARIES}
-                       -lpthread -lrt -lm)
+target_link_libraries (${LEDD} ${CONFIG_YAML_LIBRARIES}
+                       ${OVSCOMMON_LIBRARIES} ${OVSDB_LIBRARIES}
+                       -lpthread -lrt)
 
 # Rules to install ledd binary in rootfs
 install(TARGETS ${LEDD}
-  RUNTIME DESTINATION bin)
+        RUNTIME DESTINATION bin)
