@@ -111,8 +111,6 @@
 
 /* **************** DEFINES ************* */
 
-#define DEFAULT_YAML_DIR    "/usr/local/halon/platform/hwdesc" /*!< Default location for hw description files if not in OVSDB */
-
 #define NAME_IN_DAEMON_TABLE "ledd" /*!< Name identifier for this daemon in the OVSDB daemon table */
 
 #define LEDD_LED_TYPE_LOC       "loc" /*!< Name identifier for LED type loc */

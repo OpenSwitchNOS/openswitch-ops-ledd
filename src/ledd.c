@@ -127,8 +127,8 @@ ledd_get_led_type(struct locl_subsystem *subsys, char *value)
  * Function that will remove the internal entry in the locl_subsystem hash
  * for any subsystem that is no longer in OVSDB.
  *
- * @todo HALON_TODO: need to remove subsystem yaml data
- * @todo HALON_TODO: verify that ovsdb has deleted the leds (automatic)
+ * @todo OPS_TODO: need to remove subsystem yaml data
+ * @todo OPS_TODO: verify that ovsdb has deleted the leds (automatic)
  ***************************************************************************/
 static void
 ledd_remove_unmarked_subsystems(void)
@@ -170,8 +170,8 @@ ledd_remove_unmarked_subsystems(void)
 
             shash_delete(&subsystem_data, node);
 
-            /* HALON_TODO: need to remove subsystem yaml data */
-            /* HALON_TODO: verify that ovsdb has deleted the leds (automatic) */
+            /* OPS_TODO: need to remove subsystem yaml data */
+            /* OPS_TODO: verify that ovsdb has deleted the leds (automatic) */
         }
     }
 } /* ledd_remove_unmarked_subsystems() */
@@ -433,7 +433,7 @@ ledd_unixctl_dump(struct unixctl_conn *conn, int argc OVS_UNUSED,
 static void
 usage(void)
 {
-    printf("%s: Halon ledd daemon\n"
+    printf("%s: OpenSwitch ledd daemon\n"
            "usage: %s [OPTIONS] [DATABASE]\n"
            "where DATABASE is a socket on which ovsdb-server is listening\n"
            "      (default: \"unix:%s/db.sock\").\n",
@@ -569,7 +569,7 @@ ledd_init(const char *remote)
 
     idl = ovsdb_idl_create(remote, &ovsrec_idl_class, false, true);
     idl_seqno = ovsdb_idl_get_seqno(idl);
-    ovsdb_idl_set_lock(idl, "halon_ledd");
+    ovsdb_idl_set_lock(idl, "ops_ledd");
     /* Commenting this out to allow read/write for state column. */
     /* ovsdb_idl_verify_write_only(idl); */
 
@@ -731,7 +731,7 @@ add_subsystem(const struct ovsrec_subsystem *ovsrec_subsys,
     lsubsys->name = strdup(ovsrec_subsys->name);
     lsubsys->marked = false;
     lsubsys->subsys_status = LEDD_SUBSYS_STATUS_IGNORE;
-    lsubsys->parent_subsystem = NULL;  /* HALON_TODO: find parent subsystem */
+    lsubsys->parent_subsystem = NULL;  /* OPS_TODO: find parent subsystem */
 
     shash_init(&lsubsys->subsystem_leds);
     shash_init(&lsubsys->subsystem_types);
@@ -740,7 +740,9 @@ add_subsystem(const struct ovsrec_subsystem *ovsrec_subsys,
     dir = ovsrec_subsys->hw_desc_dir;
 
     if (dir == NULL || strlen(dir) == 0) {
-        dir = DEFAULT_YAML_DIR;
+        VLOG_ERR("No h/w description directory for subsystem %s",
+                                    ovsrec_subsys->name);
+        return;
     }
 
     /* since this is a new subsystem, load all of the hardware description
@@ -1011,7 +1013,7 @@ ledd_run(void)
     if (ovsdb_idl_is_lock_contended(idl)) {
         static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
 
-        VLOG_ERR_RL(&rl, "another halon-ledd process is running, "
+        VLOG_ERR_RL(&rl, "another ops-ledd process is running, "
                     "disabling this process until it goes away");
 
         return;
@@ -1023,7 +1025,7 @@ ledd_run(void)
 
     daemonize_complete();
     vlog_enable_async();
-    VLOG_INFO_ONCE("%s (Halon ledd) %s", program_name, VERSION);
+    VLOG_INFO_ONCE("%s (OpenSwitch ledd) %s", program_name, VERSION);
 } /* ledd_run() */
 
 static void

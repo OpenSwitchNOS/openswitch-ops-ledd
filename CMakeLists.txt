@@ -17,6 +17,8 @@ cmake_minimum_required (VERSION 2.8)
 
 set (LEDD ledd)
 project (${LEDD})
+set (SRC_DIR src)
+set (INCL_DIR include)
 
 # Define compile flags
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -Wall -Werror")
@@ -27,12 +29,12 @@ pkg_check_modules(CONFIG_YAML REQUIRED ops-config-yaml)
 pkg_check_modules(OVSCOMMON REQUIRED libovscommon)
 pkg_check_modules(OVSDB REQUIRED libovsdb)
 
-include_directories (${PROJECT_BINARY_DIR} ${PROJECT_SOURCE_DIR}
+include_directories (${PROJECT_BINARY_DIR} ${PROJECT_SOURCE_DIR}/${INCL_DIR}
                      ${OVSCOMMON_INCLUDE_DIRS}
 )
 
 # Sources to build ledd
-set (SOURCES ledd.c)
+set (SOURCES ${SRC_DIR}/ledd.c)
 
 # Rules to build ledd
 add_executable (${LEDD} ${SOURCES})
