@@ -17,7 +17,7 @@
  */
 
 /************************************************************************//**
- * @ingroup ledd
+ * @ingroup ops-ledd
  *
  * @file
  * Source file for the platform LED daemon
@@ -407,7 +407,7 @@ ledd_unixctl_dump(struct unixctl_conn *conn, int argc OVS_UNUSED,
     struct shash_node *snode;
     struct shash_node *lnode;
 
-    ds_put_cstr(&ds, "Support Dump for Platform LED Daemon (ledd)\n");
+    ds_put_cstr(&ds, "Support Dump for Platform LED Daemon (ops-ledd)\n");
 
     SHASH_FOR_EACH(snode, &subsystem_data) {
         struct locl_subsystem *subsystem = (struct locl_subsystem *)snode->data;
@@ -598,7 +598,7 @@ ledd_init(const char *remote)
     ovsdb_idl_add_column(idl, &ovsrec_subsystem_col_leds);
     ovsdb_idl_omit_alert(idl, &ovsrec_subsystem_col_leds);
 
-    unixctl_command_register("ledd/dump", "", 0, 0,
+    unixctl_command_register("ops-ledd/dump", "", 0, 0,
                              ledd_unixctl_dump, NULL);
 } /* ledd_init() */
 

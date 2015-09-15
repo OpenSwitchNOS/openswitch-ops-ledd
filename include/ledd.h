@@ -16,7 +16,7 @@
  */
 
 /************************************************************************//**
- * @defgroup ledd LED Daemon
+ * @defgroup ops-ledd LED Daemon
  * This module is the platform daemon that processess and manages LEDs
  * for all subsystems in the switch that have LEDs.
  * @{
@@ -36,7 +36,7 @@
  *
  * Command line options:
  *
- *     usage: ledd [OPTIONS] [DATABASE]
+ *     usage: ops-ledd [OPTIONS] [DATABASE]
  *     where DATABASE is a socket on which ovsdb-server is listening
  *           (default: "unix:/var/run/openvswitch/db.sock").
  *
@@ -53,14 +53,14 @@
  *     Daemon options:
  *          --detach                run in background as daemon
  *          --no-chdir              do not chdir to '/'
- *          --pidfile[=FILE]        create pidfile (default: /var/run/openvswitch/ledd.pid)
+ *          --pidfile[=FILE]        create pidfile (default: /var/run/openvswitch/ops-ledd.pid)
  *          --overwrite-pidfile     with --pidfile, start even if already running
  *
  *     Logging options:
  *          -vSPEC, --verbose=SPEC   set logging levels
  *          -v, --verbose            set maximum verbosity level
  *          --log-file[=FILE]        enable logging to specified FILE
- *                                  (default: /var/log/openvswitch/ledd.log)
+ *                                  (default: /var/log/openvswitch/ops-ledd.log)
  *          --syslog-target=HOST:PORT  also send syslog msgs to HOST:PORT via UDP
  *
  *     Other options:
@@ -71,32 +71,32 @@
  *
  * ovs-apptcl options:
  *
- *      Support dump: ovs-appctl -t ledd ledd/dump
+ *      Support dump: ovs-appctl -t ops-ledd ops-ledd/dump
  *
  *
  * OVSDB elements usage
  *
- *     Creation: The following rows/cols are created by ledd
+ *     Creation: The following rows/cols are created by ops-ledd
  *               rows in led table
  *               led:id
  *               led:state
  *               led:status
  *
- *     Written: The following cols are written by ledd
+ *     Written: The following cols are written by ops-ledd
  *              led:status
- *              daemon["ledd"]:cur_hw
+ *              daemon["ops-ledd"]:cur_hw
  *              subsystem:leds
  *
- *     Read: The following cols are read by ledd
+ *     Read: The following cols are read by ops-ledd
  *           led:state
  *           subsystem:name
  *           subsystem:hw_desc_dir
  *
  * Linux Files:
  *
- *     The following files are written by ledd
- *           /var/run/openvswitch/ledd.pid: Process ID for the ledd daemon
- *           /var/run/openvswitch/ledd.<pid>.ctl: unixctl socket for the ledd daemon
+ *     The following files are written by ops-ledd
+ *           /var/run/openvswitch/ops-ledd.pid: Process ID for the ops-ledd daemon
+ *           /var/run/openvswitch/ops-ledd.<pid>.ctl: unixctl socket for the ops-ledd daemon
  *
  * @}
  ***************************************************************************/
@@ -111,11 +111,11 @@
 
 /* **************** DEFINES ************* */
 
-#define NAME_IN_DAEMON_TABLE "ledd" /*!< Name identifier for this daemon in the OVSDB daemon table */
+#define NAME_IN_DAEMON_TABLE "ops-ledd" /*!< Name identifier for this daemon in the OVSDB daemon table */
 
 #define LEDD_LED_TYPE_LOC       "loc" /*!< Name identifier for LED type loc */
 
-VLOG_DEFINE_THIS_MODULE(ledd);
+VLOG_DEFINE_THIS_MODULE(ops-ledd);
 COVERAGE_DEFINE(ledd_reconfigure);
 
 /* **************** TYPEDEFS  ************* */
@@ -184,4 +184,4 @@ struct locl_led {
 };
 
 #endif /* _LEDD_H_ */
-/** @} end of group ledd */
+/** @} end of group ops-ledd */

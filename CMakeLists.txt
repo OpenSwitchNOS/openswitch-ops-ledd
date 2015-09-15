@@ -15,7 +15,7 @@
 
 cmake_minimum_required (VERSION 2.8)
 
-set (LEDD ledd)
+set (LEDD ops-ledd)
 project (${LEDD})
 set (SRC_DIR src)
 set (INCL_DIR include)
@@ -33,16 +33,16 @@ include_directories (${PROJECT_BINARY_DIR} ${PROJECT_SOURCE_DIR}/${INCL_DIR}
                      ${OVSCOMMON_INCLUDE_DIRS}
 )
 
-# Sources to build ledd
+# Sources to build ops-ledd
 set (SOURCES ${SRC_DIR}/ledd.c)
 
-# Rules to build ledd
+# Rules to build ops-ledd
 add_executable (${LEDD} ${SOURCES})
 
 target_link_libraries (${LEDD} ${CONFIG_YAML_LIBRARIES}
                        ${OVSCOMMON_LIBRARIES} ${OVSDB_LIBRARIES}
                        -lpthread -lrt)
 
-# Rules to install ledd binary in rootfs
+# Rules to install ops-ledd binary in rootfs
 install(TARGETS ${LEDD}
         RUNTIME DESTINATION bin)
