@@ -84,4 +84,4 @@ locl_led: LED data
 ```
 
 ## References
-* [config-yaml library](http://www.openswitch.net/documents/dev/ops-config-yaml/DESIGN)
+* [config-yaml library](/documents/dev/ops-config-yaml/DESIGN)
