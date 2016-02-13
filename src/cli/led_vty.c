@@ -35,6 +35,7 @@
 #include "openswitch-idl.h"
 #include "vtysh/vtysh_ovsdb_if.h"
 #include "vtysh/vtysh_ovsdb_config.h"
+#include "vtysh_ovsdb_led_context.h"
 
 VLOG_DEFINE_THIS_MODULE (vtysh_led_cli);
 
@@ -252,8 +253,21 @@ void cli_pre_init(void)
  */
 void cli_post_init(void)
 {
+    vtysh_ret_val retval = e_vtysh_error;
+
     install_element (ENABLE_NODE, &cli_platform_show_led_cmd);
     install_element (VIEW_NODE, &cli_platform_show_led_cmd);
     install_element (CONFIG_NODE, &cli_platform_set_led_cmd);
     install_element (CONFIG_NODE, &no_cli_platform_set_led_cmd);
+
+    retval = install_show_run_config_subcontext(e_vtysh_config_context,
+                                       e_vtysh_config_context_led,
+                                       &vtysh_config_context_led_clientcallback,
+                                       NULL, NULL);
+    if(e_vtysh_ok != retval)
+    {
+        vtysh_ovsdb_config_logmsg(VTYSH_OVSDB_CONFIG_ERR,
+                              "config context unable to add led cliet callback");
+        assert(0);
+    }
 }
