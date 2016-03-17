@@ -57,6 +57,7 @@
 #include "config-yaml.h"
 
 #include "ledd.h"
+#include "eventlog.h"
 
 /* ********* GLOBALS **************** */
 
@@ -561,6 +562,8 @@ ledd_unmark_subsystems(void)
 static void
 ledd_init(const char *remote)
 {
+    int retval;
+
     /* initialize subsystems */
     init_subsystems();
 
@@ -600,6 +603,12 @@ ledd_init(const char *remote)
 
     unixctl_command_register("ops-ledd/dump", "", 0, 0,
                              ledd_unixctl_dump, NULL);
+
+    retval = event_log_init("LED");
+
+    if(retval < 0) {
+         VLOG_ERR("Event log initialization failed for LED");
+    }
 } /* ledd_init() */
 
 struct ovsrec_led *
@@ -802,6 +811,8 @@ add_subsystem(const struct ovsrec_subsystem *ovsrec_subsys,
     else {
         VLOG_DBG("There are %d LED types in subsystem %s", type_count,
                                  ovsrec_subsys->name);
+        log_event("LED_COUNT", EV_KV("count", "%d", type_count),
+            EV_KV("subsystem", "%s", ovsrec_subsys->name));
     }
 
     /* Verify that the LED # specified and # found are the same. */
