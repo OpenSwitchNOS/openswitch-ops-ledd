@@ -151,6 +151,7 @@ class PlatformLedTests(OpsVsiTest):
         return True
 
 
+@pytest.mark.skipif(True, reason="Disabling old tests")
 class Test_led:
 
     # Init test tables??
