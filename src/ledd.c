@@ -89,23 +89,6 @@ ledd_led_type_string_to_enum(char *type_string)
     return (LED_UNKNOWN);
 } /* ledd_led_type_string_to_enum() */
 
-static void
-i2c_debug(const char *sub, const YamlDevice *device, i2c_op **cmds)
-{
-    int i;
-
-    VLOG_DBG("I2C: sub name: %s", sub);
-    VLOG_DBG("I2C: device name: %s", device->name);
-
-    for (i = 0; cmds[i] != NULL; i++) {
-        VLOG_DBG("I2C[%d]: direction: %s", i,
-                cmds[i]->direction == READ ? "read" : "write");
-        VLOG_DBG("I2C[%d]: device: %s", i, cmds[i]->device);
-        VLOG_DBG("I2C[%d]: byte count: %d", i, cmds[i]->byte_count);
-        VLOG_DBG("I2C[%d]: address: %d", i, cmds[i]->register_address);
-    }
-} /* i2c_debug() */
-
 YamlLedType *
 ledd_get_led_type(struct locl_subsystem *subsys, char *value)
 {
@@ -196,14 +179,8 @@ ledd_write_led(struct locl_subsystem *subsys, struct locl_led *led)
     YamlLedTypeSettings *settings;
     YamlLedType *type;
     i2c_bit_op *reg_op;
-    i2c_op op;
-    i2c_op *cmds[2];
-    unsigned char value;
-    unsigned char byte;
-    unsigned short word;
-    unsigned long dword;
+    uint32_t value;
     int rc;
-    const YamlDevice    *device = NULL;
     YamlLedTypeValue type_value;
 
     reg_op = led->yaml_led->led_access;
@@ -258,72 +235,7 @@ ledd_write_led(struct locl_subsystem *subsys, struct locl_led *led)
             return(false);
     }
 
-    /* Get the device */
-    device = yaml_find_device(yaml_handle, subsys->name, reg_op->device);
-
-    if (device == NULL) {
-        VLOG_WARN("subsystem %s: unable to find LED control device %s",
-                        subsys->name, reg_op->device);
-        return(false);
-    }
-
-    /* we're going to do a read/modify/write: read the data */
-    op.direction = READ;
-    op.device = reg_op->device;
-    op.register_address = reg_op->register_address;
-    op.byte_count = reg_op->register_size;
-    switch (reg_op->register_size) {
-        case 1:
-            op.data = (unsigned char *)&byte;
-            break;
-        case 2:
-            op.data = (unsigned char *)&word;
-            break;
-        case 4:
-            op.data = (unsigned char *)&dword;
-            break;
-        default:
-            VLOG_WARN("subsystem %s: invalid LED control register size (%d)",
-                    subsys->name, reg_op->register_size);
-            return(false);
-    }
-    op.set_register = false;
-    op.negative_polarity = false;
-    cmds[0] = &op;
-    cmds[1] = NULL;
-
-    i2c_debug(subsys->name, device, cmds);
-    rc = i2c_execute(yaml_handle, subsys->name, device, cmds);
-
-    if (rc != 0) {
-        VLOG_WARN("subsystem %s: unable to read LED control register (%d)",
-                       subsys->name, rc);
-        return(false);
-    }
-
-    /* now we write the data */
-    op.direction = WRITE;
-    switch (reg_op->register_size) {
-        case 1:
-            byte &= ~reg_op->bit_mask;
-            byte |= value;
-            break;
-        case 2:
-            word &= ~reg_op->bit_mask;
-            word |= value;
-            break;
-        case 4:
-            dword &= ~reg_op->bit_mask;
-            dword |= value;
-            break;
-        default:
-            VLOG_WARN("subsystem %s: invalid LED control register \
-                    size (%d)", subsys->name, reg_op->register_size);
-            return(false);
-    }
-
-    i2c_debug(subsys->name, device, cmds);
-    rc = i2c_execute(yaml_handle, subsys->name, device, cmds);
+    rc = i2c_reg_write(yaml_handle, subsys->name, reg_op, value);
 
     if (rc != 0) {
         VLOG_WARN("subsystem %s: unable to set LED control register (%d)",
