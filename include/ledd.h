@@ -107,6 +107,7 @@
 #include <stdbool.h>
 #include "shash.h"
 #include "config-yaml.h"
+#include "vswitch-idl.h"
 
 /* **************** DEFINES ************* */
 
@@ -114,8 +115,7 @@
 
 #define LEDD_LED_TYPE_LOC       "loc" /*!< Name identifier for LED type loc */
 
-VLOG_DEFINE_THIS_MODULE(ops_ledd);
-COVERAGE_DEFINE(ledd_reconfigure);
+#define SUBSYSTEM_LED_NAME_DELIMITER '-'
 
 /* **************** TYPEDEFS  ************* */
 
@@ -159,15 +159,17 @@ enum subsysstatus {
  * STRUCT used to keep information about each subsystem in the OVSDB,
  * including what LED information is applicable.
  ***************************************************************************/
-struct locl_subsystem {
+struct ledd_locl_subsystem {
     char *name;                         /*!< Name of the subsystem */
     bool marked;                        /*!< True if subsystem exists*/
-    struct locl_subsystem *parent_subsystem; /*!< parent subsystem */
+    struct ledd_locl_subsystem *parent_subsystem; /*!< parent subsystem */
     int num_leds;                       /*!< Number of LEDs in subsystem */
     int num_types;                      /*!< Number of LED types in subsystem */
     struct shash subsystem_leds;        /*!< shash of locl_led structs*/
     struct shash subsystem_types;       /*!< shash of YamlLedType structs */
     enum subsysstatus subsys_status;    /*!< status {OK, IGNORE} */
+    YamlConfigHandle yaml_handle;       /*!< yaml config file handle */
+    const struct ledd_subsystem_class *class; /*!< Interface methods */
 };
 
 /************************************************************************//**
@@ -175,12 +177,12 @@ struct locl_subsystem {
  ***************************************************************************/
 struct locl_led {
     char *name;                         /*!< LED name */
-    struct locl_subsystem *subsystem;   /*!< Subsystem this LED is in */
+    struct ledd_locl_subsystem *subsystem;   /*!< Subsystem this LED is in */
     const YamlLed *yaml_led;            /*!< YamlLed struct for this LED */
-    YamlLedTypeSettings *settings;      /*!< Settings for this LED */
+    const YamlLedType *type;            /*!< YamlLedType struct for this LED */
     enum ovsrec_led_state_e state;      /*!< Last state in OVSDB */
     enum ovsrec_led_status_e status;    /*!< Last status in OVSDB */
+    const struct ledd_led_class *class; /*!< Interface methods */
 };
-
 #endif /* _LEDD_H_ */
 /** @} end of group ops-ledd */

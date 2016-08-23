@@ -1,0 +1,66 @@
+/*
+ * Copyright Mellanox Technologies, Ltd. 2001-2016.
+ * This software product is licensed under Apache version 2, as detailed in
+ * the COPYING file.
+ */
+
+#ifndef _LEDD_PLUGINS_H_
+#define _LEDD_PLUGINS_H_
+
+#define LEDD_PLATFORM_PLUGINS_PATH "@LIBDIR@/platform/plugins"
+#define LEDD_PLATFORM_TYPE_STR "@PLATFORM_TYPE_STR@"
+
+/**
+ * Initialize ops-ledd platform support plugin. Must be implemented in plugin.
+ */
+void ledd_plugins_init(void);
+
+/**
+ * Deinitialize ops-ledd platform support plugin. Must be implemented in
+ * plugin.
+ */
+void ledd_plugins_deinit(void);
+
+/**
+ * Plugins run function. Must be implemented in plugin.
+ */
+void ledd_plugins_run(void);
+
+/**
+ * Plugins wait function. Must be implemented in plugin.
+ */
+void ledd_plugins_wait(void);
+
+/**
+ * Get ledd subsystem class.
+ *
+ * @param[in] platform_type - string containing type of the platform.
+ *
+ * @return pointer to subsystem class.
+ * @return NULL if no plugin for specified platform was loaded
+ */
+const struct ledd_subsystem_class *ledd_subsystem_class_get(const char *platform_type);
+
+/**
+ * Get ledd led class.
+ *
+ * @param[in] platform_type - string containing type of the platform.
+ *
+ * @return pointer to led class.
+ * @return NULL if no plugin for specified platform was loaded
+ */
+const struct ledd_led_class *ledd_led_class_get(const char *platform_type);
+
+/**
+ * Loads platform plugin. Initializes callbacks from plugin.
+ *
+ * @return 0 on success, non-zero value on failure.
+ */
+int ledd_plugins_load(void);
+
+/**
+ * Unload plugin - deinitialize symbols by destroing handle.
+ */
+void ledd_plugins_unload(void);
+
+#endif /* _LEDD_PLUGINS_H_ */
