@@ -32,8 +32,11 @@ include_directories (${PROJECT_BINARY_DIR} ${PROJECT_SOURCE_DIR}/${INCL_DIR}
                      ${OVSCOMMON_INCLUDE_DIRS}
 )
 
+configure_file(${CMAKE_SOURCE_DIR}/${INCL_DIR}/ledd_plugins.h.in
+               ${CMAKE_SOURCE_DIR}/${INCL_DIR}/ledd_plugins.h)
+
 # Sources to build ops-ledd
-set (SOURCES ${SRC_DIR}/ledd.c)
+set (SOURCES ${SRC_DIR}/ledd.c ${SRC_DIR}/ledd_plugins.c)
 
 # Rules to build ops-ledd
 add_executable (${LEDD} ${SOURCES})
@@ -44,6 +47,8 @@ target_link_libraries (${LEDD} ${CONFIG_YAML_LIBRARIES}
 
 # Build ops-ledd cli shared libraries.
 add_subdirectory(src/cli)
+add_subdirectory(plugins/sysfs)
+add_subdirectory(plugins/i2c)
 
 # Rules to install ops-ledd binary in rootfs
 install(TARGETS ${LEDD}

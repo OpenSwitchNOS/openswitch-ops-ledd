@@ -54,17 +54,16 @@
 #include "vswitch-idl.h"
 #include "coverage.h"
 
-#include "config-yaml.h"
-
 #include "ledd.h"
+#include "ledd_plugin_interfaces.h"
 #include "eventlog.h"
+#include "ledd_plugins.h"
 
 /* ********* GLOBALS **************** */
+VLOG_DEFINE_THIS_MODULE(ops_ledd);
+COVERAGE_DEFINE(ledd_reconfigure);
 
 bool change_to_commit = false; /*!< True if need to update ovsdb */
-
-/* global yaml config handle */
-YamlConfigHandle yaml_handle;
 
 /* define a shash (string hash) to hold the subsystems (by name) */
 struct shash subsystem_data;
@@ -136,10 +135,10 @@ ledd_remove_unmarked_subsystems(void)
 
                 /* delete the subsystem entry */
                 shash_delete(&subsystem->subsystem_leds, led_node);
-
+                led->class->ledd_led_destruct(led);
                 /* free the allocated data */
                 free(led->name);
-                free(led);
+                led->class->ledd_led_dealloc(led);
             }
 
             /* delete all LED types in the subsystem */
@@ -149,8 +148,9 @@ ledd_remove_unmarked_subsystems(void)
                 /* delete the subsystem entry */
                 shash_delete(&subsystem->subsystem_types, type_node);
             }
+            subsystem->class->ledd_subsystem_destruct(subsystem);
             free(subsystem->name);
-            free(subsystem);
+            subsystem->class->ledd_subsystem_dealloc(subsystem);
 
             shash_delete(&subsystem_data, node);
 
@@ -165,11 +165,15 @@ ledd_remove_unmarked_subsystems(void)
  *
  * Logic:
  *     - Retrieves the LED type
- *     - Retrieves the i2c settings for the LED type
+ *     - Retrieves the settings for the LED type
  *     - Retrieves the value to write to the LED to match ovsdb state variable
- *     - Retrieves the i2c device access information
+ *     - Writes the new value of the LED * Logic:
+ *     - Retrieves the LED type
+ *     - Retrieves the settings for the LED type
+ *     - Retrieves the value to write to the LED to match ovsdb state variable
+ *     - Retrieves the LED device access information
  *     - Reads the current value of the LED register
- *     - Writes the new value of the LED register (bitwise OR)
+ *     - Writes the new value of the LED state
  *
  * Returns: True on success, else False for any failure
  ***************************************************************************/
@@ -178,12 +182,8 @@ ledd_write_led(struct locl_subsystem *subsys, struct locl_led *led)
 {
     YamlLedTypeSettings *settings;
     YamlLedType *type;
-    i2c_bit_op *reg_op;
-    uint32_t value;
     int rc;
     YamlLedTypeValue type_value;
-
-    reg_op = led->yaml_led->led_access;
 
     /* Get the LED type */
     type = ledd_get_led_type(subsys, led->yaml_led->type);
@@ -211,20 +211,11 @@ ledd_write_led(struct locl_subsystem *subsys, struct locl_led *led)
     type_value = ledd_led_type_string_to_enum(type->type);
     switch (type_value) {
         case LED_LOC:
-            switch (led->state) {
-                case LED_STATE_FLASHING:
-                    value = settings->flashing;
-                    break;
-                case LED_STATE_OFF:
-                    value = settings->off;
-                    break;
-                case LED_STATE_ON:
-                    value = settings->on;
-                    break;
-                default:
-                    VLOG_WARN("Invalid state %d for subsystem %s, LED %s",
-                            led->state, subsys->name, led->name);
-                    return(false);
+            rc = led->class->ledd_led_state_set(led, led->state, NULL);
+            if (rc != 0) {
+                VLOG_WARN("subsystem %s: unable to set LED state %d (%d)",
+                          subsys->name, led->state, rc);
+                return(false);
             }
             break;
         case LED_UNKNOWN:
@@ -235,13 +226,7 @@ ledd_write_led(struct locl_subsystem *subsys, struct locl_led *led)
             return(false);
     }
 
-    rc = i2c_reg_write(yaml_handle, subsys->name, reg_op, value);
 
-    if (rc != 0) {
-        VLOG_WARN("subsystem %s: unable to set LED control register (%d)",
-                    subsys->name, rc);
-        return(false);
-    }
 
     return(true);
 } /* ledd_write_led() */
@@ -476,11 +461,14 @@ ledd_init(const char *remote)
 {
     int retval;
 
+    if (ledd_plugins_load()) {
+        VLOG_ERR("Failed loading platform support plugin.");
+    }
+
+    ledd_plugins_init();
+
     /* initialize subsystems */
     init_subsystems();
-
-    /* initialize the yaml handle */
-    yaml_handle = yaml_new_config_handle();
 
     idl = ovsdb_idl_create(remote, &ovsrec_idl_class, false, true);
     idl_seqno = ovsdb_idl_get_seqno(idl);
@@ -581,9 +569,7 @@ process_changes_in_subsys(struct locl_subsystem *subsys)
                 led->state = ledd_state_to_enum(ovs_led->state);
 
                 /* If we have a valid type, write to the LED */
-                if (ledd_get_led_type(subsys, led->yaml_led->type) !=
-                                        (YamlLedType *) NULL) {
-
+                if (led->type != (YamlLedType *) NULL) {
                     if (ledd_write_led(subsys, led)) {
                         VLOG_DBG("ledd_write successful, %s",led->name);
                         status = LED_STATUS_OK;
@@ -633,67 +619,90 @@ void
 add_subsystem(const struct ovsrec_subsystem *ovsrec_subsys,
                             struct ovsdb_idl_txn *txn)
 {
-    struct locl_subsystem *lsubsys;
-    int rc;
-    int type_count;
-    int idx;
-    int led_count;
-    struct ovsrec_led **led_array;
-    const char *dir;
-    const YamlLedInfo *led_info;
+    const struct ledd_subsystem_class *subsystem_class = NULL;
+    const struct ledd_led_class *led_class = NULL;
+    struct locl_subsystem *lsubsys = NULL;
+    int rc = 0;
+    int idx = 0;
+    int led_count = 0;
+    int type_count = 0;
+    int loc_led_count = 0;
+    struct ovsrec_led **led_array = NULL;
+    const char *dir = NULL;
+    const YamlLedInfo *led_info = NULL;
 
     VLOG_DBG("Adding new subsystem %s", ovsrec_subsys->name);
-
-    lsubsys = (struct locl_subsystem *)malloc(sizeof(struct locl_subsystem));
-    memset(lsubsys, 0, sizeof(struct locl_subsystem));
-
-    (void)shash_add(&subsystem_data, ovsrec_subsys->name, (void *)lsubsys);
-
-    lsubsys->name = strdup(ovsrec_subsys->name);
-    lsubsys->marked = false;
-    lsubsys->subsys_status = LEDD_SUBSYS_STATUS_IGNORE;
-    lsubsys->parent_subsystem = NULL;  /* OPS_TODO: find parent subsystem */
-
-    shash_init(&lsubsys->subsystem_leds);
-    shash_init(&lsubsys->subsystem_types);
 
     /* use a default if the hw_desc_dir has not been populated */
     dir = ovsrec_subsys->hw_desc_dir;
 
     if (dir == NULL || strlen(dir) == 0) {
         VLOG_ERR("No h/w description directory for subsystem %s",
-                                    ovsrec_subsys->name);
+                 ovsrec_subsys->name);
+        return;
+    }
+
+    subsystem_class = ledd_subsystem_class_get(PLATFORM_TYPE_STR);
+    led_class = ledd_led_class_get(PLATFORM_TYPE_STR);
+
+    if (subsystem_class == NULL) {
+        VLOG_ERR("No plugin provides LED subsystem class");
+        return;
+    }
+
+    if (led_class == NULL) {
+        VLOG_ERR("No plugin provides LED class");
+        return;
+    }
+
+    lsubsys = subsystem_class->ledd_subsystem_alloc();
+    (void)shash_add(&subsystem_data, ovsrec_subsys->name, (void *)lsubsys);
+
+    lsubsys->name = strdup(ovsrec_subsys->name);
+    lsubsys->marked = false;
+    lsubsys->subsys_status = LEDD_SUBSYS_STATUS_IGNORE;
+    lsubsys->parent_subsystem = NULL;  /* OPS_TODO: find parent subsystem */
+    lsubsys->class = subsystem_class;
+    lsubsys->yaml_handle = yaml_new_config_handle();
+
+    shash_init(&lsubsys->subsystem_leds);
+    shash_init(&lsubsys->subsystem_types);
+
+    rc = subsystem_class->ledd_subsystem_construct(lsubsys);
+    if (rc) {
+        VLOG_ERR("Failed to construct subsystem %s", lsubsys->name);
+        free(lsubsys->name);
+        subsystem_class->ledd_subsystem_dealloc(lsubsys);
         return;
     }
 
     /* since this is a new subsystem, load all of the hardware description
        information about the LEDs (just for this subsystem).
        parse LED and device data for subsystem */
-    rc = yaml_add_subsystem(yaml_handle, ovsrec_subsys->name, dir);
+    rc = yaml_add_subsystem(lsubsys->yaml_handle, ovsrec_subsys->name, dir);
 
     if (rc != 0) {
         VLOG_ERR("Error processing h/w description files for subsystem %s",
-                                    ovsrec_subsys->name);
+                 ovsrec_subsys->name);
         return;
     }
 
-    rc = yaml_parse_devices(yaml_handle, ovsrec_subsys->name);
-
+    rc = yaml_parse_devices(lsubsys->yaml_handle, ovsrec_subsys->name);
     if (rc != 0) {
         VLOG_ERR("Unable to parse subsystem %s devices file (in %s)",
-                                ovsrec_subsys->name, dir);
+                 ovsrec_subsys->name, dir);
         return;
     }
 
-    rc = yaml_parse_leds(yaml_handle, ovsrec_subsys->name);
+    rc = yaml_parse_leds(lsubsys->yaml_handle, ovsrec_subsys->name);
 
     if (rc != 0) {
         VLOG_ERR("Unable to parse subsystem %s led file (in %s)",
-                                ovsrec_subsys->name, dir);
+                 ovsrec_subsys->name, dir);
         return;
     }
 
-    led_info = yaml_get_led_info(yaml_handle, ovsrec_subsys->name);
+    led_info = yaml_get_led_info(lsubsys->yaml_handle, ovsrec_subsys->name);
 
     if (led_info == NULL) {
         VLOG_INFO("subsystem %s has no LED info", ovsrec_subsys->name);
@@ -701,12 +710,13 @@ add_subsystem(const struct ovsrec_subsystem *ovsrec_subsys,
     }
 
     /* get the # of LED types */
-    lsubsys->num_types =
-        yaml_get_led_type_count(yaml_handle, ovsrec_subsys->name);
+    lsubsys->num_types = yaml_get_led_type_count(lsubsys->yaml_handle,
+                                                 ovsrec_subsys->name);
     type_count = led_info->number_types;
 
     /* get the # of LEDs found in the yaml file. */
-    lsubsys->num_leds = yaml_get_led_count(yaml_handle, ovsrec_subsys->name);
+    lsubsys->num_leds = yaml_get_led_count(lsubsys->yaml_handle,
+                                           ovsrec_subsys->name);
     led_count = led_info->number_leds;
 
     if ( (lsubsys->num_leds <= 0) || (lsubsys->num_types <= 0) ) {
@@ -716,13 +726,13 @@ add_subsystem(const struct ovsrec_subsystem *ovsrec_subsys,
     /* Verify that the type # specified and # found are the same. */
     if (lsubsys->num_types != type_count) {
         VLOG_WARN("LED type count does not match in %s/led.yaml file. Info "
-                "says it is %d, while the number counted in the file is %d",
-                dir, type_count, lsubsys->num_types);
+                  "says it is %d, while the number counted in the file is %d",
+                  dir, type_count, lsubsys->num_types);
         type_count = lsubsys->num_types;
     }
     else {
         VLOG_DBG("There are %d LED types in subsystem %s", type_count,
-                                 ovsrec_subsys->name);
+                 ovsrec_subsys->name);
         log_event("LED_COUNT", EV_KV("count", "%d", type_count),
             EV_KV("subsystem", "%s", ovsrec_subsys->name));
     }
@@ -730,17 +740,17 @@ add_subsystem(const struct ovsrec_subsystem *ovsrec_subsys,
     /* Verify that the LED # specified and # found are the same. */
     if (lsubsys->num_leds != led_count) {
         VLOG_WARN("LED count does not match in %s/led.yaml file. Info says "
-                "it is %d, while the number counted in the file is %d",
-                dir, led_count, lsubsys->num_leds);
+                  "it is %d, while the number counted in the file is %d",
+                  dir, led_count, lsubsys->num_leds);
         led_count = lsubsys->num_leds;
     }
     else {
         VLOG_DBG("There are %d LEDs in subsystem %s", led_count,
-                                 ovsrec_subsys->name);
+                 ovsrec_subsys->name);
     }
 
     led_array = (struct ovsrec_led **)
-                xcalloc(led_count, sizeof(struct ovsrec_led *));
+    xcalloc(led_count, sizeof(struct ovsrec_led *));
 
     /* Add the types to the locl_subsystem structure */
     for (idx = 0; idx < (int) type_count; idx++) {
@@ -748,7 +758,7 @@ add_subsystem(const struct ovsrec_subsystem *ovsrec_subsys,
         bool found = false;
         const YamlLedType *new_type;
 
-        new_type = yaml_get_led_type(yaml_handle, ovsrec_subsys->name, idx);
+        new_type = yaml_get_led_type(lsubsys->yaml_handle, ovsrec_subsys->name, idx);
 
         if (new_type == (YamlLedType *) NULL) {
             VLOG_ERR("subsystem %s had error reading LED type",
@@ -778,30 +788,44 @@ add_subsystem(const struct ovsrec_subsystem *ovsrec_subsys,
     for (idx = 0; idx < led_count; idx++) {
         struct ovsrec_led *ovs_led;
         char *led_name = NULL;
-        const YamlLed *led;
+        const YamlLed *led = NULL;
         struct locl_led *new_led;
-        YamlLedType *led_type;
 
-        led = yaml_get_led(yaml_handle, ovsrec_subsys->name, idx);
+        led = yaml_get_led(lsubsys->yaml_handle, ovsrec_subsys->name, idx);
+
+        /* Processing loc LED type only */
+        if (strcmp(led->type, LEDD_LED_TYPE_LOC)) {
+            continue;
+        }
 
         VLOG_DBG("Adding LED %s in subsystem %s", led->name,
-                                        ovsrec_subsys->name);
+                 ovsrec_subsys->name);
 
         /* Create the new locl led struct and initialize it. */
-        asprintf(&led_name, "%s-%s", ovsrec_subsys->name, led->name);
-        new_led = (struct locl_led *)malloc(sizeof(struct locl_led));
+        asprintf(&led_name, "%s%c%s", ovsrec_subsys->name,
+                 SUBSYSTEM_LED_NAME_DELIMITER,
+                 led->name);
+        new_led = led_class->ledd_led_alloc();
         new_led->name = led_name;
         new_led->subsystem = lsubsys;
         new_led->yaml_led = led;
         new_led->state = LED_STATE_OFF;
         new_led->status = LED_STATUS_OK;
 
-        led_type = ledd_get_led_type(lsubsys, led->type);
-        if (led_type == NULL) {
-            new_led->settings = (YamlLedTypeSettings *)NULL;
+        new_led->type = yaml_get_led_type(lsubsys->yaml_handle,
+                                          ovsrec_subsys->name, idx);
+        if (new_led->type == NULL) {
             new_led->status = LED_STATUS_FAULT;
-        } else {
-            new_led->settings = &(led_type->settings);
+    //TODO add more massage
+        }
+        new_led->class = led_class;
+        rc = led_class->ledd_led_construct(new_led);
+        if (rc) {
+            VLOG_ERR("Failed constructing led %s subsystem %s",
+                     new_led->name,
+                     lsubsys->name);
+            free(new_led->name);
+            led_class->ledd_led_dealloc(new_led);
         }
 
         /* Add this new locl led to the led shash in subsystem shash */
@@ -817,7 +841,7 @@ add_subsystem(const struct ovsrec_subsystem *ovsrec_subsys,
             /* Add to ovsdb. */
             ovsrec_led_set_id(ovs_led, led_name);
             ovsrec_led_set_state(ovs_led,
-                    ledd_state_to_string(new_led->state));
+                                 ledd_state_to_string(new_led->state));
         }
 
         /* Write the LED */
@@ -830,14 +854,14 @@ add_subsystem(const struct ovsrec_subsystem *ovsrec_subsys,
         }
 
         /* Either way, set that status accordingly. */
-        ovsrec_led_set_status(ovs_led,
-                    ledd_status_to_string(new_led->status));
+        ovsrec_led_set_status(ovs_led, ledd_status_to_string(new_led->status));
 
-        led_array[idx] = ovs_led;
+        led_array[loc_led_count] = ovs_led;
+        loc_led_count++;
     }
 
     /* Push the data to the DB. */
-    ovsrec_subsystem_set_leds(ovsrec_subsys, led_array, led_count);
+    ovsrec_subsystem_set_leds(ovsrec_subsys, led_array, loc_led_count);
     change_to_commit = true;
 
     free(led_array);
@@ -957,6 +981,14 @@ ledd_wait(void)
     ovsdb_idl_wait(idl);
 } /* ledd_wait() */
 
+static void
+ledd_uninit()
+{
+    ovsdb_idl_destroy(idl);
+    ledd_plugins_deinit();
+    ledd_plugins_unload();
+}
+
 /* ************ MAIN ******************** */
 int
 main(int argc, char *argv[])
@@ -989,9 +1021,11 @@ main(int argc, char *argv[])
     exiting = false;
     while (!exiting) {
         ledd_run();
+        ledd_plugins_run();
         unixctl_server_run(unixctl);
 
         ledd_wait();
+        ledd_plugins_wait();
         unixctl_server_wait(unixctl);
         if (exiting) {
             poll_immediate_wake();
@@ -999,7 +1033,7 @@ main(int argc, char *argv[])
         poll_block();
     }
 
-    ovsdb_idl_destroy(idl);
+    ledd_uninit();
     unixctl_server_destroy(unixctl);
 
     return 0;
