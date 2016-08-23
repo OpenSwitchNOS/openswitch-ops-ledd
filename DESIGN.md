@@ -71,15 +71,20 @@ Main loop pseudo-code
   |         |       |                     |    +----------------------+
   |         |       |                     |
   |         |       |            +--------+
-  |         +------------------> | i2c    |    +------+
+  |         +------------------> | plugin |    +------+
   |         |       |            |        +--->+ LEDs |
-  |         |       +------------+--------+    +------+
-  +---------+
+  |         |       +------------+---^----+    +------+
+  +---------+                        |
+                                 +--------------+
+                                 | i2c or sysfs |
+                                 | depends on   |
+                                 | the system   |
+                                 +--------------+
 ```
 
 ### Data structures
 ```
-locl_subsystem: list of LEDs and their status
+ledd_locl_subsystem: list of LEDs and their status
 locl_led: LED data
 ```
 
